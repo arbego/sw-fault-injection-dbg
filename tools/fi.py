@@ -1,215 +1,207 @@
 #!/usr/bin/env python3
 """
-Fault Injector using the official openocd Python library.
+Fault Injector CLI.
 
-Implements stuck-at faults using hardware watchpoints with server-side
-event handlers for zero-latency response.
+A modular fault injection tool supporting multiple fault models.
+Each model is implemented as a plugin in the faults/ directory.
+
+Usage:
+    fi.py stuck-at <address> <value> [options]
+    fi.py --list-models
 """
 
+import sys
 import time
 import argparse
-from dataclasses import dataclass
 from typing import Optional
 
-from openocd import Client, WatchpointType, ResetType
+from openocd import Client
 
-
-@dataclass
-class StuckAtFault:
-    """A stuck-at fault configuration."""
-    address: int
-    value: int
-    width: int = 32
+from faults import get_fault_models, StuckAtFault
 
 
 class FaultInjector:
-    """Fault injection using OpenOCD watchpoints with server-side event handlers."""
-    
+    """
+    Main fault injection controller.
+
+    Manages OpenOCD connection and delegates to specific fault models.
+    """
+
     def __init__(self, host: str = 'localhost', port: int = 6666):
-        self.client = Client(host, port, timeout=10)
-        self.fault: Optional[StuckAtFault] = None
-    
-    def connect(self):
+        self.host = host
+        self.port = port
+        self.client: Optional[Client] = None
+        self.model = None
+
+    def connect(self) -> None:
         """Connect to OpenOCD."""
+        self.client = Client(self.host, self.port, timeout=10)
         self.client.connect()
-    
-    def close(self):
-        """Clean up and close connection."""
-        if self.fault:
-            # Remove event handler and watchpoint
-            self.client.execute("esp32s3.cpu0 configure -event halted {}")
-            self.client.remove_all_watchpoints()
-        self.client.close()
-    
+
+    def close(self) -> None:
+        """Clean up and disconnect."""
+        if self.model:
+            self.model.cleanup()
+        if self.client:
+            self.client.close()
+
     def __enter__(self):
         self.connect()
         return self
-    
+
     def __exit__(self, *args):
         self.close()
-    
-    def setup_stuck_at(self, address: int, value: int, width: int = 32):
+
+    def setup_fault(self, model_class, **kwargs) -> None:
         """
-        Configure a stuck-at fault with server-side event handler.
-        
-        The TCL event handler runs directly in OpenOCD when the watchpoint
-        fires, eliminating all network latency.
-        
+        Configure a fault model.
+
         Args:
-            address: Memory address to target
-            value: Value to stick at (0 for stuck-at-0, 0xFFFFFFFF for stuck-at-1)
-            width: Access width in bits (8, 16, or 32)
+            model_class: Fault model class to instantiate
+            **kwargs: Model-specific parameters
         """
-        self.fault = StuckAtFault(address=address, value=value, width=width)
-        
-        # Reset and let boot complete
-        print("[FI] Resetting target...")
-        self.client.reset(ResetType.RUN)
-        time.sleep(2)
-        
-        # Halt to set up
-        self.client.halt()
-        
-        # Initialize counters in OpenOCD global namespace
-        self.client.execute("set ::fi_app_triggers 0")
-        self.client.execute("set ::fi_sys_triggers 0")
-        self.client.execute(f"set ::fi_addr 0x{address:08x}")
-        self.client.execute(f"set ::fi_value {value}")
-        self.client.execute(f"set ::fi_width {width}")
-        
-        # Set initial stuck value
-        self.client.write_memory(address, [value], width)
-        
-        # Verify
-        val = self.client.read_memory(address, 1, width)[0]
-        print(f"[FI] Set 0x{address:08x} = 0x{val:08x}")
-        
-        # Create TCL event handler that runs when target halts
-        # This runs entirely inside OpenOCD - zero network latency!
-        # Skip the store instruction (PC += 2) to prevent the write
-        handler_script = f'''
-        esp32s3.cpu0 configure -event halted {{
-            # Read PC register and skip the store instruction
-            set pc [reg pc]
-            regexp {{0x([0-9a-fA-F]+)}} $pc -> pc_hex
-            set pc_int [expr 0x$pc_hex]
-            
-            # Skip 2 bytes (narrow store instruction)
-            set new_pc [expr {{$pc_int + 2}}]
-            reg pc [format "0x%08x" $new_pc]
-            
-            incr ::fi_app_triggers
-            resume
-        }}
-        '''
-        
-        print("[FI] Installing server-side event handler...")
-        self.client.execute(handler_script)
-        
-        # Set write watchpoint
-        self.client.add_watchpoint(address, width // 8, WatchpointType.WRITE)
-        print(f"[FI] Watchpoint set at 0x{address:08x}")
-    
-    def run(self, duration: Optional[float] = None):
+        self.model = model_class(self.client)
+        self.model.setup(**kwargs)
+
+    def run(self, duration: Optional[float] = None) -> dict:
         """
-        Run with fault injection active.
-        
-        The event handler runs entirely in OpenOCD, so we just wait
-        and periodically check stats.
-        
+        Run fault injection.
+
         Args:
-            duration: How long to run in seconds (None = until Ctrl+C)
+            duration: Run time in seconds (None = until Ctrl+C)
+
+        Returns:
+            Statistics dictionary
         """
-        if not self.fault:
+        if not self.model:
             print("[FI] No fault configured")
-            return
-        
+            return {}
+
         print(f"[FI] Running... (Ctrl+C to stop)")
         self.client.resume()
-        
+
         start = time.time()
         try:
             while True:
-                time.sleep(1)  # Just wait - event handler does the work
-                
+                time.sleep(1)
                 if duration and (time.time() - start) >= duration:
                     break
-                    
         except KeyboardInterrupt:
             print("\n[FI] Interrupted")
-        
-        # Stop and get stats
+
+        # Stop and collect stats
         self.client.halt()
-        
-        # Read trigger counts from OpenOCD
-        app_triggers = int(self.client.execute("set ::fi_app_triggers"))
-        
-        print(f"\n[FI] Triggers: {app_triggers}")
-    
-    def get_stats(self) -> tuple:
-        """Get current trigger counts."""
-        app = int(self.client.execute("set ::fi_app_triggers"))
-        sys = int(self.client.execute("set ::fi_sys_triggers"))
-        return app, sys
+        stats = self.model.get_stats()
+
+        print(f"\n[FI] Triggers: {stats.get('triggers', 0)}")
+        return stats
+
+
+def resolve_address(address_str: str, elf_path: Optional[str] = None) -> int:
+    """
+    Resolve address from hex string or symbol name.
+
+    Args:
+        address_str: Hex address or symbol name
+        elf_path: Optional ELF file for symbol lookup
+
+    Returns:
+        Integer address
+    """
+    try:
+        return int(address_str, 16)
+    except ValueError:
+        if elf_path:
+            from elf_parser import ElfParser
+            elf = ElfParser(elf_path)
+            sym = elf.find_symbol_by_name(address_str)
+            if sym:
+                print(f"[FI] Resolved '{address_str}' -> 0x{sym.address:08x}")
+                return sym.address
+            raise ValueError(f"Symbol '{address_str}' not found in {elf_path}")
+        raise ValueError(f"'{address_str}' is not a hex address. Use --elf for symbol lookup.")
 
 
 def main():
+    # Get available fault models
+    models = get_fault_models()
+    model_names = list(models.keys())
+
     parser = argparse.ArgumentParser(
-        description='Stuck-at Fault Injector',
+        description='Fault Injector - Modular fault injection tool',
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=f"""
+Available fault models: {', '.join(model_names)}
+
 Examples:
-  %(prog)s 0x3fc93740 0              # Stuck-at-0
-  %(prog)s 0x3fc93740 1              # Stuck-at-1 (all bits = 1)
-  %(prog)s led_enabled 0 --elf app.elf  # Use symbol name
-  %(prog)s 0x3fc93740 0xDEAD --width 16  # 16-bit stuck value
+  %(prog)s stuck-at 0x3fc93740 0              # Stuck-at-0
+  %(prog)s stuck-at 0x3fc93740 1              # Stuck-at-1
+  %(prog)s stuck-at 0x3fc93740 0xDEAD         # Stuck at custom value
+  %(prog)s stuck-at led_enabled 0 --elf app.elf  # Use symbol name
+  %(prog)s --list-models                      # List available models
         """
     )
-    parser.add_argument('address', help='Memory address (hex) or symbol name')
-    parser.add_argument('value', help='Stuck value: 0, 1, or hex value')
+
+    # Global options
     parser.add_argument('--host', default='localhost', help='OpenOCD host')
     parser.add_argument('--port', type=int, default=6666, help='OpenOCD TCL port')
-    parser.add_argument('--width', type=int, default=32, choices=[8, 16, 32],
-                        help='Access width in bits')
-    parser.add_argument('--duration', type=float, help='Run duration in seconds')
-    parser.add_argument('--elf', help='ELF file for symbol lookup')
-    
+    parser.add_argument('--list-models', action='store_true',
+                        help='List available fault models')
+
+    # Subparsers for fault models
+    subparsers = parser.add_subparsers(dest='model', help='Fault model')
+
+    # Stuck-at model
+    stuck_at_parser = subparsers.add_parser('stuck-at',
+                                            help='Stuck-at fault (force fixed value)')
+    stuck_at_parser.add_argument('address', help='Memory address (hex) or symbol')
+    stuck_at_parser.add_argument('value', help='0, 1, or hex value')
+    stuck_at_parser.add_argument('--width', type=int, default=32,
+                                 choices=[8, 16, 32], help='Bit width')
+    stuck_at_parser.add_argument('--duration', type=float,
+                                 help='Run duration in seconds')
+    stuck_at_parser.add_argument('--elf', help='ELF file for symbol lookup')
+
     args = parser.parse_args()
-    
-    # Resolve address
+
+    # Handle --list-models
+    if args.list_models:
+        print("Available fault models:")
+        for name, cls in models.items():
+            print(f"  {name}: {cls.description}")
+        return 0
+
+    # Require a model
+    if not args.model:
+        parser.print_help()
+        return 1
+
     try:
-        address = int(args.address, 16)
-    except ValueError:
-        # Try symbol lookup
-        if args.elf:
-            from elf_parser import ElfParser
-            elf = ElfParser(args.elf)
-            sym = elf.find_symbol_by_name(args.address)
-            if sym:
-                address = sym.address
-                print(f"[FI] Resolved '{args.address}' -> 0x{address:08x}")
-            else:
-                print(f"[FI] Symbol '{args.address}' not found")
-                return 1
-        else:
-            print(f"[FI] '{args.address}' is not a hex address. Use --elf for symbol lookup.")
-            return 1
-    
-    # Resolve value
-    if args.value == '0':
-        value = 0
-    elif args.value == '1':
-        value = (1 << args.width) - 1  # All bits set
-    else:
-        value = int(args.value, 16)
-    
-    # Run fault injection
-    with FaultInjector(args.host, args.port) as fi:
-        fi.setup_stuck_at(address, value, args.width)
-        fi.run(args.duration)
-    
-    return 0
+        # Handle stuck-at model
+        if args.model == 'stuck-at':
+            address = resolve_address(args.address, args.elf)
+            value = StuckAtFault.parse_value(args.value, args.width)
+
+            with FaultInjector(args.host, args.port) as fi:
+                fi.setup_fault(StuckAtFault,
+                              address=address,
+                              value=value,
+                              width=args.width)
+                fi.run(args.duration)
+
+        # Future models would be handled here
+        # elif args.model == 'bit-flip':
+        #     ...
+
+        return 0
+
+    except ValueError as e:
+        print(f"[FI] Error: {e}")
+        return 1
+    except Exception as e:
+        print(f"[FI] Error: {e}")
+        return 1
 
 
 if __name__ == '__main__':
-    exit(main())
+    sys.exit(main())
