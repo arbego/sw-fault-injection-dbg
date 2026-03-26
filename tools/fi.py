@@ -134,9 +134,10 @@ def main():
 Available fault models: {', '.join(model_names)}
 
 Examples:
-  %(prog)s stuck-at 0x3fc93740 0              # Stuck-at-0
-  %(prog)s stuck-at 0x3fc93740 1              # Stuck-at-1
-  %(prog)s stuck-at 0x3fc93740 0xDEAD         # Stuck at custom value
+  %(prog)s stuck-at 0x3fc93740 0              # Stuck at 0
+  %(prog)s stuck-at 0x3fc93740 1              # Stuck at 1
+  %(prog)s stuck-at 0x3fc93740 255            # Stuck at 255
+  %(prog)s stuck-at 0x3fc93740 0xDEADBEEF     # Stuck at 0xDEADBEEF
   %(prog)s stuck-at led_enabled 0 --elf app.elf  # Use symbol name
   %(prog)s --list-models                      # List available models
         """
@@ -155,7 +156,7 @@ Examples:
     stuck_at_parser = subparsers.add_parser('stuck-at',
                                             help='Stuck-at fault (force fixed value)')
     stuck_at_parser.add_argument('address', help='Memory address (hex) or symbol')
-    stuck_at_parser.add_argument('value', help='0, 1, or hex value')
+    stuck_at_parser.add_argument('value', help='Stuck value (decimal or 0x hex)')
     stuck_at_parser.add_argument('--width', type=int, default=32,
                                  choices=[8, 16, 32], help='Bit width')
     stuck_at_parser.add_argument('--duration', type=float,

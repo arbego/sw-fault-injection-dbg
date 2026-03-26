@@ -31,10 +31,11 @@ class StuckAtFault(FaultModel):
     Forces a memory location to remain at a fixed value by intercepting
     all writes and skipping the store instruction.
 
-    Supports:
-    - stuck-at-0: Value forced to 0
-    - stuck-at-1: Value forced to all 1s
-    - stuck-at-X: Value forced to any arbitrary value
+    Examples:
+    - stuck-at 0: Value forced to 0
+    - stuck-at 1: Value forced to 1
+    - stuck-at 0xFF: Value forced to 255
+    - stuck-at 0xDEADBEEF: Value forced to 0xDEADBEEF
     """
 
     name = "stuck-at"
@@ -135,15 +136,13 @@ class StuckAtFault(FaultModel):
         Parse the value argument.
 
         Args:
-            value_str: "0", "1", or hex string
-            width: Bit width
+            value_str: Decimal or hex string (0x prefix for hex)
+            width: Bit width (unused, kept for API compatibility)
 
         Returns:
             Integer value
         """
-        if value_str == '0':
-            return 0
-        elif value_str == '1':
-            return (1 << width) - 1  # All bits set
-        else:
+        if value_str.startswith('0x') or value_str.startswith('0X'):
             return int(value_str, 16)
+        else:
+            return int(value_str)
