@@ -2,10 +2,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "led_strip.h"
+#include "esp_log.h"
 
 #define LED_GPIO 48
 #define LED_BRIGHTNESS 3  // ~1% of 255
 
+static const char *TAG = "fi_dbg";
 static led_strip_handle_t led_strip;
 
 // Control variable for LED state
@@ -37,7 +39,7 @@ static void led_task(void *arg)
         // Toggle led_enabled every iteration
         led_enabled = !led_enabled;
         
-        printf("[%lu] led_enabled = %lu\n", counter++, led_enabled);
+        ESP_LOGI(TAG, "[%lu] led_enabled = %lu", counter++, led_enabled);
         
         // LED state controlled by variable
         if (led_enabled) {
