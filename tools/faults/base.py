@@ -123,14 +123,14 @@ def get_fault_models() -> dict:
         Dictionary mapping model names to classes
     """
     from . import stuck_at
+    from . import bit_flip
 
     models = {}
 
     # Register stuck-at model
     models[stuck_at.StuckAtFault.name] = stuck_at.StuckAtFault
 
-    # Future models can be added here or discovered dynamically
-    # from . import bit_flip
-    # models[bit_flip.BitFlipFault.name] = bit_flip.BitFlipFault
+    # Register bit-flip model
+    models[bit_flip.BitFlipFault.name] = bit_flip.BitFlipFault
 
     return models

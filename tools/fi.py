@@ -17,7 +17,7 @@ from typing import Optional
 
 from openocd import Client
 
-from faults import get_fault_models, StuckAtFault
+from faults import get_fault_models, StuckAtFault, BitFlipFault
 
 
 class FaultInjector:
@@ -136,9 +136,9 @@ Available fault models: {', '.join(model_names)}
 Examples:
   %(prog)s stuck-at 0x3fc93740 0              # Stuck at 0
   %(prog)s stuck-at 0x3fc93740 1              # Stuck at 1
-  %(prog)s stuck-at 0x3fc93740 255            # Stuck at 255
-  %(prog)s stuck-at 0x3fc93740 0xDEADBEEF     # Stuck at 0xDEADBEEF
-  %(prog)s stuck-at led_enabled 0 --elf app.elf  # Use symbol name
+  %(prog)s bit-flip 0x3fc93740 --bit 0        # Flip bit 0
+  %(prog)s bit-flip 0x3fc93740 --mask 0xFF    # Flip lower 8 bits
+  %(prog)s bit-flip 0x3fc93740 --random       # Flip random bit
   %(prog)s --list-models                      # List available models
         """
     )
@@ -162,6 +162,22 @@ Examples:
     stuck_at_parser.add_argument('--duration', type=float,
                                  help='Run duration in seconds')
     stuck_at_parser.add_argument('--elf', help='ELF file for symbol lookup')
+
+    # Bit-flip model
+    bitflip_parser = subparsers.add_parser('bit-flip',
+                                           help='Bit-flip fault (transient, no watchpoints)')
+    bitflip_parser.add_argument('address', help='Memory address (hex) or symbol')
+    bitflip_group = bitflip_parser.add_mutually_exclusive_group()
+    bitflip_group.add_argument('--bit', type=int, help='Bit number to flip (0-31)')
+    bitflip_group.add_argument('--mask', help='Bit mask (hex, e.g. 0xFF)')
+    bitflip_group.add_argument('--random', action='store_true', help='Flip random bit')
+    bitflip_parser.add_argument('--width', type=int, default=32,
+                                choices=[8, 16, 32], help='Bit width')
+    bitflip_parser.add_argument('--count', type=int, default=1,
+                                help='Number of injections')
+    bitflip_parser.add_argument('--interval', type=float, default=1.0,
+                                help='Seconds between injections')
+    bitflip_parser.add_argument('--elf', help='ELF file for symbol lookup')
 
     args = parser.parse_args()
 
@@ -190,9 +206,29 @@ Examples:
                               width=args.width)
                 fi.run(args.duration)
 
-        # Future models would be handled here
-        # elif args.model == 'bit-flip':
-        #     ...
+        # Handle bit-flip model
+        elif args.model == 'bit-flip':
+            address = resolve_address(args.address, args.elf)
+
+            # Determine bit mask
+            if args.random:
+                mask = BitFlipFault.random_bit_mask(args.width)
+                print(f"[FI] Random bit mask: 0x{mask:0{args.width//4}x}")
+            elif args.mask:
+                mask = int(args.mask, 16)
+            elif args.bit is not None:
+                mask = 1 << args.bit
+            else:
+                mask = 1  # Default: flip bit 0
+
+            with FaultInjector(args.host, args.port) as fi:
+                fi.setup_fault(BitFlipFault,
+                              address=address,
+                              bit_mask=mask,
+                              width=args.width,
+                              count=args.count,
+                              interval=args.interval)
+                fi.model.run()
 
         return 0
 

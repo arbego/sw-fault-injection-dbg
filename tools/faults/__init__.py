@@ -8,15 +8,16 @@ Each fault model is a self-contained implementation that defines:
 
 Available models:
 - stuck_at: Force memory to fixed value (stuck-at-0, stuck-at-1)
+- bit_flip: Flip specific bits (transient fault, no watchpoints)
 
 Future models:
-- bit_flip: Flip specific bits on write
 - transient: Temporary value corruption
 - delay: Add latency to memory access
 """
 
 from .base import FaultModel, FaultConfig, get_fault_models
 from .stuck_at import StuckAtFault, StuckAtConfig
+from .bit_flip import BitFlipFault, BitFlipConfig
 
 __all__ = [
     'FaultModel',
@@ -24,4 +25,6 @@ __all__ = [
     'get_fault_models',
     'StuckAtFault',
     'StuckAtConfig',
+    'BitFlipFault',
+    'BitFlipConfig',
 ]
