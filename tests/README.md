@@ -105,7 +105,8 @@ To build, flash, and run only the hardware bit-flip module:
 .venv/bin/python -m unittest tests.hardware.test_bit_flip -v
 ```
 
-The hardware suite calls the production `BitFlipFault` module and verifies:
+The hardware suite uses the shared session API to call the production
+`BitFlipFault` module and verifies:
 
 - Every bit in both directions for 8-, 16-, and 32-bit accesses.
 - Zero, multiple-bit, full-width, and random single-bit masks.
@@ -123,7 +124,8 @@ execution during cleanup.
 ```
 
 The firmware module `app/main/modules/stuck_at.c` increments
-`fi_stuck_at_counter` and `fi_stuck_at_counter_2` once per task loop (every 10 ms).
+`fi_stuck_at_counter`, `fi_stuck_at_counter_2`, and `fi_stuck_at_counter_3` once per
+task loop (every 10 ms).
 The single-counter test:
 
 1. Reads the counter twice and checks it increases without a fault.
@@ -137,11 +139,11 @@ Each check prints its values with the `[test: stuck-at]` prefix. Reads briefly
 halt the CPU, pausing the fault's auto-resume callback during inspection while
 leaving the watchpoint installed. The callback is restored before execution
 resumes; if a write is pending at the watchpoint, the restored handler skips it.
-The test calls `StuckAtFault.setup(reset=False)` so `0`, `1`, and the random
+The test calls `session.stuck_at(..., reset=False)` so `0`, `1`, and the random
 value are tested in one continuous target run. Only the initial build/flash
 preparation resets the board; applying and removing each fault does not reboot it.
-Reset handling is shared through `FaultModel.setup(reset=...)`. Stuck-at defaults
-to `reset=True`; bit-flip defaults to `reset=False`.
+The session API defaults both fault types to `reset=False`. The lower-level
+`StuckAtFault.setup()` retains its `reset=True` default for the existing CLI.
 
 ## Two simultaneous stuck-at faults
 
@@ -175,5 +177,23 @@ and their watchpoint hit counts continue increasing.
 For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
 corresponding Python test module under `hardware/`. Hardware modules
-should call `tests.hardware.support.prepare_target(host, port)` in their class
-setup to reuse the common build/flash fixture and matching ELF.
+should call `tests.hardware.support.prepare_session()` in their setup to reuse
+the common build/flash fixture and matching ELF. Use the returned `FaultSession`
+for memory access, faults, and observations, and register
+`session.remove_all_faults` as test cleanup.
+
+## Shared Python API
+
+Tests and experiment scripts both use [`fi_dbg.FaultSession`](../fi_dbg/README.md).
+The test fixture adds only the test application's startup handshake and caches
+one session per test process. Hardware lifecycle and building/flashing live in
+the reusable package. Test output keeps the `[test: stuck-at]` prefix.
+
+To replay random test choices, set a seed (also printed at session startup):
+
+```sh
+FI_SEED=42 .venv/bin/python -m unittest discover -s tests -t . -v
+```
+
+The procedure example and runner use the same API; see
+[`experiments/counters.py`](../experiments/counters.py).

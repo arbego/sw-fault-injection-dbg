@@ -1,7 +1,5 @@
-"""Start a fresh local OpenOCD server for the lifetime of the test process."""
+"""Start a fresh local OpenOCD server for the lifetime of a fault session."""
 
-import atexit
-from functools import lru_cache
 import ipaddress
 import os
 from pathlib import Path
@@ -112,9 +110,8 @@ class ManagedOpenOCD:
             self.log.close()
 
 
-@lru_cache(maxsize=None)
-def ensure_openocd(host, port, build_dir):
-    """Restart local OpenOCD once per session; remote servers stay externally managed."""
+def start_openocd(host, port, build_dir):
+    """Start a fresh local server. The caller owns stop(); remote servers are unmanaged."""
     try:
         version = server_version(host, port)
     except (OSError, RuntimeError) as error:
@@ -147,7 +144,6 @@ def ensure_openocd(host, port, build_dir):
         log.close()
         raise RuntimeError(f"Could not start OpenOCD: {error}") from error
     server = ManagedOpenOCD(process, log)
-    atexit.register(server.stop)
     try:
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
@@ -164,7 +160,6 @@ def ensure_openocd(host, port, build_dir):
         raise RuntimeError("OpenOCD did not become ready within 15 seconds")
     except BaseException as error:
         server.stop()
-        atexit.unregister(server.stop)
         if isinstance(error, Exception):
             details = "\n".join(log_path.read_text(errors="replace").splitlines()[-30:])
             raise RuntimeError(f"{error}. OpenOCD log: {log_path}\n{details}") from error

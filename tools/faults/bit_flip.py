@@ -15,6 +15,7 @@ not continuously like stuck-at faults. No watchpoints are used.
 
 import time
 import random
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Optional, List
 
@@ -52,10 +53,19 @@ class BitFlipFault(FaultModel):
     name = "bit-flip"
     description = "Flip bit(s) at memory location (transient fault)"
 
-    def __init__(self, client: Client):
+    def __init__(self, client: Client, *, pause=None):
         super().__init__(client)
         self.config: Optional[BitFlipConfig] = None
         self.injections: List[dict] = []  # Log of injections
+        self._pause = pause or self._halted_target
+
+    @contextmanager
+    def _halted_target(self):
+        self.client.halt()
+        try:
+            yield
+        finally:
+            self.client.resume()
 
     def setup(self, address: int, bit_mask: int = 1, width: int = 32,
               count: int = 1, interval: float = 0.0,
@@ -100,21 +110,12 @@ class BitFlipFault(FaultModel):
         width = self.config.width
         mask = self.config.bit_mask
 
-        # Halt target
-        self.client.halt()
-
-        # Read current value
-        values = self.client.read_memory(addr, 1, width)
-        old_value = values[0]
-
-        # Flip bits
-        new_value = old_value ^ mask
-
-        # Write corrupted value
-        self.client.write_memory(addr, [new_value], width)
-
-        # Resume target
-        self.client.resume()
+        # A session can provide a pause that preserves other active faults.
+        with self._pause():
+            values = self.client.read_memory(addr, 1, width)
+            old_value = values[0]
+            new_value = old_value ^ mask
+            self.client.write_memory(addr, [new_value], width)
 
         # Log injection
         injection = {

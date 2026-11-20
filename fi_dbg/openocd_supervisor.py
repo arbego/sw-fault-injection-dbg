@@ -1,4 +1,4 @@
-"""Own OpenOCD and stop it when the test runner's lifetime pipe closes.
+"""Own OpenOCD and stop it when the session owner's lifetime pipe closes.
 
 Executed as a standalone process so cleanup also works after runner SIGKILL,
 os._exit(), or a crash that bypasses Python exit handlers.
