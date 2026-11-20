@@ -275,20 +275,15 @@ class FaultSession:
             raise ValueError(f"Fault name must be nonempty and unique: {name!r}")
         return name
 
-    def _check_reset(self, reset):
-        if reset and self._faults:
-            raise ValueError("Remove active faults before resetting the target")
-
-    def stuck_at(self, target, value, *, width=32, reset=False, name=None):
+    def stuck_at(self, target, value, *, width=32, name=None):
         self._validate_access(width)
         if not isinstance(value, int) or not 0 <= value < 1 << width:
             raise ValueError(f"Stuck value must fit in {width} bits")
         address = self.address(target)
         name = self._fault_name("stuck-at", name)
-        self._check_reset(reset)
         model = StuckAtFault(self._client)
         try:
-            model.setup(address, value=value, width=width, reset=reset)
+            model.setup(address, value=value, width=width)
             handle = FaultHandle(self, model, name, address)
             self._faults[name] = handle
         except Exception as error:
@@ -303,7 +298,7 @@ class FaultSession:
         return handle
 
     def bit_flip(self, target, *, bit=None, mask=None, random_bit=False, width=32,
-                 count=1, interval=0.0, reset=False, offset=0, name=None):
+                 count=1, interval=0.0, offset=0, name=None):
         self._validate_access(width, count)
         if sum((bit is not None, mask is not None, bool(random_bit))) > 1:
             raise ValueError("Choose one of bit, mask, or random_bit")
@@ -322,9 +317,8 @@ class FaultSession:
         address = self.address(target, offset=offset)
         self._check_unfaulted(address, width // 8)
         name = self._fault_name("bit-flip", name)
-        self._check_reset(reset)
         model = BitFlipFault(self._client, pause=self.paused)
-        model.setup(address, bit_mask=mask, width=width, count=count, interval=interval, reset=reset)
+        model.setup(address, bit_mask=mask, width=width, count=count, interval=interval)
         handle = FaultHandle(self, model, name, address)
         self._faults[name] = handle
         try:

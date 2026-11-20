@@ -26,7 +26,7 @@ class StuckAtHardwareTests(unittest.TestCase):
         random_value = session.random.randint(2, 0x7FFFFFFF)
         for stuck_value in (0, 1, random_value):
             with self.subTest(stuck_value=stuck_value):
-                with session.stuck_at(FIRST, stuck_value, reset=False) as fault:
+                with session.stuck_at(FIRST, stuck_value) as fault:
                     previous_hits = 0
                     for sample in range(1, 4):
                         session.expect_value(FIRST, stuck_value, samples=1,

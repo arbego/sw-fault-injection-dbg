@@ -60,8 +60,9 @@ A bit-flip returns a completed handle with `.injections` and `.stats`. It does
 not undo the flipped value on cleanup. A stuck-at handle remains active until
 removed, until its `with` block ends, or until the session closes. Releasing it
 allows subsequent firmware writes; it does not restore the original value.
-Faults default to `reset=False`, so a procedure runs continuously. Explicit
-`reset=True` is rejected while another session fault is active.
+Fault setup never resets the target, so a procedure runs continuously. Resetting
+belongs in target preparation; building and flashing with `--project` resets the
+board before the procedure starts.
 
 Memory observations briefly pause the CPU. They preserve stuck-at callbacks and
 service a pending trapped write before resuming. Writes and bit-flips overlapping

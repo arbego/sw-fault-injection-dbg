@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Optional
 
-from openocd import Client, WatchpointType, ResetType
+from openocd import Client, WatchpointType
 
 
 @dataclass
@@ -46,18 +46,15 @@ class FaultModel(ABC):
         self._active = False
 
     @abstractmethod
-    def setup(self, address: int, *, reset: bool = True, **kwargs) -> None:
+    def setup(self, address: int, **kwargs) -> None:
         """
-        Configure and arm the fault.
+        Configure and arm the fault without resetting the target.
 
         Args:
             address: Target memory address
-            reset: Reset the target before configuring the fault.
-                   Subclasses may choose a different default.
             **kwargs: Model-specific parameters
         """
-        if reset:
-            self._reset_target()
+        pass
 
     @abstractmethod
     def get_tcl_handler(self) -> str:
@@ -98,13 +95,6 @@ class FaultModel(ABC):
         self._active = False
         if was_running:
             self.client.resume()
-
-    def _reset_target(self, wait: float = 2.0) -> None:
-        """Reset target and wait for boot."""
-        print(f"[{self.name}] Resetting target...")
-        self.client.reset(ResetType.RUN)
-        import time
-        time.sleep(wait)
 
     def _init_counters(self) -> None:
         """Initialize TCL counter variables."""

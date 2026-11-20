@@ -46,16 +46,14 @@ class StuckAtFault(FaultModel):
         self.config: Optional[StuckAtConfig] = None
         self._triggers = 0
 
-    def setup(self, address: int, value: int = 0, width: int = 32,
-              reset: bool = True, **kwargs) -> None:
+    def setup(self, address: int, value: int = 0, width: int = 32) -> None:
         """
-        Configure stuck-at fault.
+        Configure stuck-at fault without resetting the target.
 
         Args:
             address: Target memory address
             value: Value to stick at (0 for stuck-at-0, 0xFFFFFFFF for stuck-at-1)
             width: Access width in bits (8, 16, or 32)
-            reset: Reset the target before configuring the fault (default True)
         """
         if self._active:
             raise RuntimeError("Remove this fault before configuring it again")
@@ -63,9 +61,6 @@ class StuckAtFault(FaultModel):
         active_count = int(self.client.execute("array size ::fi_stuck_hits"))
         if self.client.execute(f"info exists ::fi_stuck_hits({address})") == "1":
             raise ValueError(f"A stuck-at fault already targets 0x{address:08x}")
-        if reset and active_count:
-            raise ValueError("Use reset=False when adding another active stuck-at fault")
-        super().setup(address, reset=reset)
         self.config = StuckAtConfig(address=address, width=width, value=value)
         was_running = self.client.execute("esp32s3.cpu0 curstate") == "running"
         self._pause_handler()

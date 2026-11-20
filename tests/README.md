@@ -139,11 +139,10 @@ Each check prints its values with the `[test: stuck-at]` prefix. Reads briefly
 halt the CPU, pausing the fault's auto-resume callback during inspection while
 leaving the watchpoint installed. The callback is restored before execution
 resumes; if a write is pending at the watchpoint, the restored handler skips it.
-The test calls `session.stuck_at(..., reset=False)` so `0`, `1`, and the random
-value are tested in one continuous target run. Only the initial build/flash
-preparation resets the board; applying and removing each fault does not reboot it.
-The session API defaults both fault types to `reset=False`. The lower-level
-`StuckAtFault.setup()` retains its `reset=True` default for the existing CLI.
+The values `0`, `1`, and the random value are tested in one continuous target
+run. Only the initial build/flash preparation resets the board. Fault setup and
+the session's fault methods cannot reset the target; this also applies to the
+existing CLI.
 
 ## Two simultaneous stuck-at faults
 
@@ -160,8 +159,8 @@ resets between these steps.
 Each fault owns its watchpoint and hit count. Cleanup removes only that fault's
 address. A shared handler identifies the pending `S32I.N` store's address and
 skips the write for the corresponding active fault. Other store instruction
-formats remain unsupported. Adding a fault while another is active requires
-`reset=False`.
+formats remain unsupported. Adding another fault preserves the running firmware
+and existing faults.
 
 ## Watchpoint capacity
 
