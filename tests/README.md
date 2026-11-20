@@ -123,7 +123,8 @@ execution during cleanup.
 ```
 
 The firmware module `app/main/modules/stuck_at.c` increments
-`fi_stuck_at_counter` once per task loop (every 10 ms). The single test:
+`fi_stuck_at_counter` and `fi_stuck_at_counter_2` once per task loop (every 10 ms).
+The single-counter test:
 
 1. Reads the counter twice and checks it increases without a fault.
 2. Holds the counter at `0`, `1`, and one random positive value, checking each
@@ -141,6 +142,24 @@ value are tested in one continuous target run. Only the initial build/flash
 preparation resets the board; applying and removing each fault does not reboot it.
 Reset handling is shared through `FaultModel.setup(reset=...)`. Stuck-at defaults
 to `reset=True`; bit-flip defaults to `reset=False`.
+
+## Two simultaneous stuck-at faults
+
+```sh
+.venv/bin/python -m unittest tests.hardware.test_stuck_at.StuckAtHardwareTests.test_multiple_counters_increase_then_stick_then_increase_again -v
+```
+
+The test verifies both counters increase, holds the first at a random value,
+then adds a second fault at a different random value. It checks both remain
+stuck three times, removes the first fault while verifying the second is still
+stuck, then removes the second and checks both increase again. There are no
+resets between these steps.
+
+Each fault owns its watchpoint and hit count. Cleanup removes only that fault's
+address. A shared handler identifies the pending `S32I.N` store's address and
+skips the write for the corresponding active fault. Other store instruction
+formats remain unsupported. Adding a fault while another is active requires
+`reset=False`.
 
 For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
