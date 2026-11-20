@@ -1,6 +1,7 @@
 """Check that a counter increases, stays stuck, and increases again."""
 
 import os
+import random
 import time
 import unittest
 
@@ -55,29 +56,38 @@ class StuckAtHardwareTests(unittest.TestCase):
         print(f"[test: stuck-at] PASS: Counter increased before injection: {before} -> {after}.",
               flush=True)
 
-        # 2. Hold the counter at zero and check it three times.
-        fault.setup(counter_address, value=0, width=32)
-        client.resume()
-        previous_triggers = 0
-        for sample in range(1, 4):
-            time.sleep(0.2)
-            value = read_counter(with_fault=True)
-            triggers = fault.get_stats()["triggers"]
-            self.assertEqual(value, 0, "Counter did not stay stuck at zero")
-            self.assertGreater(triggers, previous_triggers,
-                               "Firmware did not make another write attempt")
-            previous_triggers = triggers
-            print(f"[test: stuck-at] PASS: Stuck check {sample}/3: read back {value}; "
-                  f"watchpoint hits: {triggers}.", flush=True)
+        # Leave headroom so the 32-bit counter cannot wrap during recovery.
+        random_value = random.randint(2, 0x7FFFFFFF)
+        for stuck_value in (0, 1, random_value):
+            with self.subTest(stuck_value=stuck_value):
+                # 2. Hold the counter at this value and check it three times.
+                try:
+                    fault.setup(counter_address, value=stuck_value, width=32, reset=False)
+                    client.resume()
+                    previous_triggers = 0
+                    for sample in range(1, 4):
+                        time.sleep(0.2)
+                        value = read_counter(with_fault=True)
+                        triggers = fault.get_stats()["triggers"]
+                        self.assertEqual(value, stuck_value,
+                                         f"Counter did not stay stuck at {stuck_value}")
+                        self.assertGreater(triggers, previous_triggers,
+                                           "Firmware did not make another write attempt")
+                        previous_triggers = triggers
+                        print(f"[test: stuck-at] PASS: Stuck at {stuck_value}, check {sample}/3: "
+                              f"read back {value}; watchpoint hits: {triggers}.", flush=True)
+                finally:
+                    fault.cleanup()
 
-        # 3. Remove the fault and verify the counter increases again.
-        fault.cleanup()
-        before = read_counter()
-        time.sleep(0.2)
-        after = read_counter()
-        self.assertGreater(after, before, "Counter did not increase after removing the fault")
-        print(f"[test: stuck-at] PASS: Counter increased after removing the fault: {before} -> {after}.",
-              flush=True)
+                # 3. Remove the fault and verify the counter increases again.
+                before = read_counter()
+                time.sleep(0.2)
+                after = read_counter()
+                # One pending increment can complete even with a stale watchpoint.
+                self.assertGreater(after, before + 1,
+                                   "Counter did not resume continuous counting after removing the fault")
+                print(f"[test: stuck-at] PASS: Counter increased after removing stuck-at-{stuck_value}: "
+                      f"{before} -> {after}.", flush=True)
 
 
 if __name__ == "__main__":

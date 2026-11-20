@@ -46,15 +46,18 @@ class FaultModel(ABC):
         self._active = False
 
     @abstractmethod
-    def setup(self, address: int, **kwargs) -> None:
+    def setup(self, address: int, *, reset: bool = True, **kwargs) -> None:
         """
         Configure and arm the fault.
 
         Args:
             address: Target memory address
+            reset: Reset the target before configuring the fault.
+                   Subclasses may choose a different default.
             **kwargs: Model-specific parameters
         """
-        pass
+        if reset:
+            self._reset_target()
 
     @abstractmethod
     def get_tcl_handler(self) -> str:
@@ -85,11 +88,16 @@ class FaultModel(ABC):
 
     def cleanup(self) -> None:
         """Clean up fault injection state."""
+        was_running = self.client.execute("esp32s3.cpu0 curstate") == "running"
         # Remove event handler
         self.client.execute("esp32s3.cpu0 configure -event halted {}")
-        # Remove watchpoints
+        # Hardware watchpoint registers must be cleared while the CPU is halted.
+        # Removing only OpenOCD's list while running can leave them enabled.
+        self.client.halt()
         self.client.remove_all_watchpoints()
         self._active = False
+        if was_running:
+            self.client.resume()
 
     def _reset_target(self, wait: float = 2.0) -> None:
         """Reset target and wait for boot."""

@@ -58,7 +58,8 @@ class BitFlipFault(FaultModel):
         self.injections: List[dict] = []  # Log of injections
 
     def setup(self, address: int, bit_mask: int = 1, width: int = 32,
-              count: int = 1, interval: float = 0.0, **kwargs) -> None:
+              count: int = 1, interval: float = 0.0,
+              reset: bool = False, **kwargs) -> None:
         """
         Configure bit-flip fault.
 
@@ -68,7 +69,9 @@ class BitFlipFault(FaultModel):
             width: Access width in bits (8, 16, or 32)
             count: Number of injections to perform
             interval: Seconds between injections (0 = immediate)
+            reset: Reset the target before configuring the fault (default False)
         """
+        super().setup(address, reset=reset)
         self.config = BitFlipConfig(
             address=address,
             width=width,

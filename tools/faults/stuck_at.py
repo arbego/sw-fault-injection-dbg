@@ -45,7 +45,8 @@ class StuckAtFault(FaultModel):
         super().__init__(client)
         self.config: Optional[StuckAtConfig] = None
 
-    def setup(self, address: int, value: int = 0, width: int = 32, **kwargs) -> None:
+    def setup(self, address: int, value: int = 0, width: int = 32,
+              reset: bool = True, **kwargs) -> None:
         """
         Configure stuck-at fault.
 
@@ -53,11 +54,11 @@ class StuckAtFault(FaultModel):
             address: Target memory address
             value: Value to stick at (0 for stuck-at-0, 0xFFFFFFFF for stuck-at-1)
             width: Access width in bits (8, 16, or 32)
+            reset: Reset the target before configuring the fault (default True)
         """
         self.config = StuckAtConfig(address=address, width=width, value=value)
 
-        # Reset and wait for boot
-        self._reset_target()
+        super().setup(address, reset=reset)
 
         # Halt to configure
         self.client.halt()

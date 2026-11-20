@@ -126,16 +126,21 @@ The firmware module `app/main/modules/stuck_at.c` increments
 `fi_stuck_at_counter` once per task loop (every 10 ms). The single test:
 
 1. Reads the counter twice and checks it increases without a fault.
-2. Enables stuck-at-zero and checks three times that the counter remains `0`.
+2. Holds the counter at `0`, `1`, and one random positive value, checking each
+   value three times. The chosen value is printed with every check.
    Watchpoint hits must increase between checks, proving more writes were attempted.
-3. Removes the fault, reads twice again, and checks that counting resumes.
+3. After each held value, removes the fault, reads twice again, and checks that
+   counting resumes with multiple increments (one pending write is insufficient).
 
 Each check prints its values with the `[test: stuck-at]` prefix. Reads briefly
 halt the CPU, pausing the fault's auto-resume callback during inspection while
 leaving the watchpoint installed. The callback is restored before execution
 resumes; if a write is pending at the watchpoint, the restored handler skips it.
-`StuckAtFault.setup()` resets the target before enabling the fault,
-so its counter restarts for phase 2.
+The test calls `StuckAtFault.setup(reset=False)` so `0`, `1`, and the random
+value are tested in one continuous target run. Only the initial build/flash
+preparation resets the board; applying and removing each fault does not reboot it.
+Reset handling is shared through `FaultModel.setup(reset=...)`. Stuck-at defaults
+to `reset=True`; bit-flip defaults to `reset=False`.
 
 For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
