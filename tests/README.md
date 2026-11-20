@@ -11,21 +11,38 @@ python3 -m venv .venv
 .venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-This suite contains only hardware tests. Connect the ESP32-S3 and start the host OpenOCD
-server in another terminal before running the test command:
+This suite contains only hardware tests. Connect the ESP32-S3 and run the test
+command. Each test session starts a fresh local OpenOCD server using
+`board/esp32s3-builtin.cfg`. If OpenOCD is already running at the configured local
+endpoint, the framework shuts it down first and waits for the port to close.
+It waits for OpenOCD to respond before flashing. Startup failures include the
+server log, also saved as `tests/app/build/openocd.log`.
 
-```sh
-openocd -f board/esp32s3-builtin.cfg
-```
+Servers started by the framework are owned by a separate supervisor that watches
+a pipe held by the test runner. When the runner exits, the supervisor stops
+OpenOCD, including after test failures, Ctrl+C, SIGTERM, SIGHUP, SIGKILL, or a
+runner crash. OpenOCD is force-stopped if it does not terminate within five
+seconds. The supervisor runs in a separate process group so a signal sent to the
+test runner's group does not disable this cleanup. A configured remote server
+must already be running and is left running; the framework never starts or
+stops a server remotely.
+
+Automatic startup finds Espressif OpenOCD under `IDF_TOOLS_PATH` (default
+`~/.espressif`), `~/esp-tools/openocd`, or `PATH`. Override the executable with
+`FI_OPENOCD_BIN` and its scripts directory with `OPENOCD_SCRIPTS` if needed.
+Managed servers bind to the configured loopback address and expose only the TCL
+port; GDB and telnet ports are disabled.
 
 Before the first hardware test, the framework automatically:
 
-1. Builds `tests/app` using the host ESP-IDF installation.
-2. Flashes the bootloader, partition table, and application from the generated
+1. Stops the existing local OpenOCD server, if present, and starts a supervised
+   server. This also ensures cleanup when the subsequent build fails.
+2. Builds `tests/app` using the host ESP-IDF installation.
+3. Flashes the bootloader, partition table, and application from the generated
    `tests/app/build/flasher_args.json` through OpenOCD, with verification.
-3. Resets the board and waits for the running test firmware to acknowledge a
+4. Resets the board and waits for the running test firmware to acknowledge a
    fresh startup request (a retained RAM signature alone is insufficient).
-4. Uses `tests/app/build/fi_test_app.elf` for symbol addresses during testing.
+5. Uses `tests/app/build/fi_test_app.elf` for symbol addresses during testing.
 
 This replaces the firmware currently on the connected target. Building and
 flashing happen once per test process, shared by the hardware fault modules.

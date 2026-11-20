@@ -18,6 +18,7 @@ import time
 from openocd import Client
 
 from elf_parser import ElfParser
+from tests.hardware.openocd_server import ensure_openocd
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -190,6 +191,7 @@ def wait_for_firmware(client, addresses, timeout=5):
 def prepare_target(host, port):
     """Only cache successful preparation; all fault modules share this fixture."""
     lock_target(host, port)
+    ensure_openocd(host, port, BUILD_DIR)
     build_test_app()
     elf = ElfParser(str(ELF_PATH))
     flash_test_app(host, port)
