@@ -163,6 +163,41 @@ class StuckAtHardwareTests(unittest.TestCase):
         print(f"[test: stuck-at] PASS: Both counters released and increasing: "
               f"{before} -> {after}.", flush=True)
 
+    def test_third_stuck_at_fault_is_rejected(self):
+        addresses = [self.elf.find_symbol_by_name(name).address for name in (
+            "fi_stuck_at_counter", "fi_stuck_at_counter_2", "fi_stuck_at_counter_3",
+        )]
+        first_fault = self.new_fault()
+        second_fault = self.new_fault()
+        third_fault = self.new_fault()
+
+        # Both hardware slots must really be in use before trying a third.
+        first_fault.setup(addresses[0], value=11, reset=False)
+        second_fault.setup(addresses[1], value=22, reset=False)
+        self.client.resume()
+        time.sleep(0.4)
+        self.assertEqual(self.read_counters(*addresses[:2]), (11, 22))
+        previous_hits = (first_fault.get_stats()["triggers"], second_fault.get_stats()["triggers"])
+        for hits in previous_hits:
+            self.assertGreater(hits, 0)
+        print("[test: stuck-at] PASS: Both hardware watchpoint slots are in use.", flush=True)
+
+        with self.assertRaisesRegex(RuntimeError, "(?i)(watchpoint|resource)") as error:
+            third_fault.setup(addresses[2], value=33, reset=False)
+        self.assertFalse(third_fault._active)
+        print(f"[test: stuck-at] PASS: Third fault rejected: {error.exception}", flush=True)
+
+        # Failure must leave the two existing faults active and handling writes.
+        resume_if_halted(self.client)
+        time.sleep(0.4)
+        values = self.read_counters(*addresses[:2])
+        self.assertEqual(values, (11, 22))
+        hits = (first_fault.get_stats()["triggers"], second_fault.get_stats()["triggers"])
+        for index in (0, 1):
+            self.assertGreater(hits[index], previous_hits[index])
+        print(f"[test: stuck-at] PASS: Existing faults still hold {values}; "
+              f"watchpoint hits increased to {hits}.", flush=True)
+
 
 if __name__ == "__main__":
     unittest.main()

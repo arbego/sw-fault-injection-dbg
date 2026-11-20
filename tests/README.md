@@ -161,6 +161,17 @@ skips the write for the corresponding active fault. Other store instruction
 formats remain unsupported. Adding a fault while another is active requires
 `reset=False`.
 
+## Watchpoint capacity
+
+```sh
+.venv/bin/python -m unittest tests.hardware.test_stuck_at.StuckAtHardwareTests.test_third_stuck_at_fault_is_rejected -v
+```
+
+This test holds the first two counters at `11` and `22`, then tries to register
+a third fault on `fi_stuck_at_counter_3`. Registration must raise a watchpoint
+allocation error. The test then verifies the first two counters are still held
+and their watchpoint hit counts continue increasing.
+
 For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
 corresponding Python test module under `hardware/`. Hardware modules

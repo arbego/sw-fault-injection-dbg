@@ -67,12 +67,23 @@ class StuckAtFault(FaultModel):
             raise ValueError("Use reset=False when adding another active stuck-at fault")
         super().setup(address, reset=reset)
         self.config = StuckAtConfig(address=address, width=width, value=value)
+        was_running = self.client.execute("esp32s3.cpu0 curstate") == "running"
         self._pause_handler()
 
         self._triggers = 0
-        self.client.execute(f"set ::fi_stuck_hits({address}) 0")
-        self._active = True
+        watchpoint_set = False
         try:
+            # Allocate before changing memory: exhaustion must not corrupt the
+            # rejected target or disturb another active fault.
+            status = self.client.execute(
+                f"catch {{wp 0x{address:x} {width // 8} w}} ::fi_stuck_error"
+            )
+            if status != "0":
+                detail = self.client.execute("set ::fi_stuck_error") or "OpenOCD rejected allocation"
+                raise RuntimeError(f"Could not register hardware watchpoint at 0x{address:08x}: {detail}")
+            watchpoint_set = True
+            self.client.execute(f"set ::fi_stuck_hits({address}) 0")
+            self._active = True
             if not active_count:
                 self._init_counters()
             self.client.write_memory(address, [value], width)
@@ -81,15 +92,18 @@ class StuckAtFault(FaultModel):
                 raise RuntimeError(f"Could not set 0x{address:08x} to {value}: read back {actual}")
             print(f"[{self.name}] Set 0x{address:08x} = 0x{actual:08x}")
 
-            status = self.client.execute(
-                f"catch {{wp 0x{address:x} {width // 8} w}} ::fi_stuck_error"
-            )
-            if status != "0":
-                raise RuntimeError(self.client.execute("set ::fi_stuck_error"))
             print(f"[{self.name}] Watchpoint set at 0x{address:08x}")
             self._install_handler()
         except BaseException:
-            self.cleanup()
+            # Already paused: do not service the same pending write twice.
+            if watchpoint_set:
+                self.client.remove_watchpoint(address)
+                self.client.execute(f"unset -nocomplain ::fi_stuck_hits({address})")
+            self._active = False
+            if active_count:
+                self.client.execute(self.get_tcl_handler())
+            if was_running:
+                self.client.resume()
             raise
 
     def _pause_handler(self) -> None:
