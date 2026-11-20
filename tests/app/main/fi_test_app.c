@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "modules/bit_flip.h"
+#include "modules/stuck_at.h"
 
 // The host checks this signature before writing to the test memory.
 volatile uint32_t fi_test_ready = 0;
@@ -20,6 +21,7 @@ static void test_task(void *arg)
 
     while (1) {
         bit_flip_test_poll();
+        stuck_at_test_poll();
         fi_test_heartbeat++;
         fi_test_ack = fi_test_request;
         vTaskDelay(pdMS_TO_TICKS(10));

@@ -116,6 +116,18 @@ The hardware suite calls the production `BitFlipFault` module and verifies:
 Run with no other debugger or injector controlling the target. Tests resume
 execution during cleanup.
 
+## Minimal stuck-at test
+
+```sh
+.venv/bin/python -m unittest tests.hardware.test_stuck_at -v
+```
+
+This is one case with one write attempt. The firmware module
+`app/main/modules/stuck_at.c` waits for a request, tries to write `1` to
+`fi_stuck_at_value`, then clears the request. The test enables stuck-at-zero,
+sends the request, and checks that the attempt finished while the value stayed
+`0`. It uses the existing `StuckAtFault` implementation.
+
 For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
 corresponding Python test module under `hardware/`. Hardware modules
