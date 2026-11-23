@@ -9,6 +9,7 @@ __pycache__/
 venv/
 
 # ESP-IDF
+/.esp/
 sdkconfig.old
 dependencies.lock
 managed_components/
