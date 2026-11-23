@@ -141,8 +141,9 @@ leaving the watchpoint installed. The callback is restored before execution
 resumes; if a write is pending at the watchpoint, the restored handler skips it.
 The values `0`, `1`, and the random value are tested in one continuous target
 run. Only the initial build/flash preparation resets the board. Fault setup and
-the session's fault methods cannot reset the target; this also applies to the
-existing CLI.
+the controller's fault methods cannot reset the target. The new `inject.py` CLI
+can request a reset as a separate controller preparation step; `--no-reset`
+skips it. The original `fi.py` remains unchanged.
 
 ## Two simultaneous stuck-at faults
 

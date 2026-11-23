@@ -71,18 +71,65 @@ work in progress: the handler supports the test app's `S32I.N` stores, and the
 ESP32-S3 has two hardware watchpoint slots per core. The API currently uses core 0.
 Host waits and polling are unsuitable for precise hardware timing.
 
-Each session starts a fresh local OpenOCD server and holds an exclusive endpoint
-lock. Closing the session removes its faults and stops the server. The existing
+By default, each session starts a fresh local OpenOCD server and holds an exclusive
+endpoint lock. Closing the session removes its faults and stops the server. The existing
 supervisor stops OpenOCD even if the Python process is killed. Remote servers are
 externally managed. The server settings and discovery variables are documented
-in [the test instructions](../tests/README.md). The `fi_dbg/fi.py` CLI works
-independently and requires an OpenOCD server already running:
+in [the test instructions](../tests/README.md).
+
+## Ad-hoc injection
+
+Inject into the firmware already flashed on the target:
+
+```sh
+.venv/bin/python -m fi_dbg.inject stuck-at led_enabled 1 --elf build/fi_dbg.elf
+.venv/bin/python -m fi_dbg.inject bit-flip led_enabled --bit 0 --elf build/fi_dbg.elf
+```
+
+The default starts a fresh local OpenOCD session (restarting an existing local
+server), resets the target, waits two seconds for boot, and applies the fault.
+`inject.py` never builds or flashes firmware and has no `--project` option.
+`--elf` supplies symbol addresses only; it must match the flashed firmware.
+Raw hex addresses work without an ELF.
+
+Use `--no-reset` to inject into the current execution:
+
+```sh
+.venv/bin/python -m fi_dbg.inject stuck-at led_enabled 1 --elf build/fi_dbg.elf --no-reset
+```
+
+This reuses a responding OpenOCD server. If none exists locally, the injector
+prints a note and starts one without requesting a target reset. A reused server
+stays running after exit; a server started by this command is supervised and
+stopped when the command ends, including if the process is killed. Remote
+servers must already be running and remain externally managed.
+
+Stuck-at remains active until Ctrl+C or until `--duration SECONDS` expires.
+On normal exit, Ctrl+C, SIGTERM, or SIGHUP the injector removes its own faults,
+resumes the target, and disconnects. Cleanup leaves faults owned by other clients
+in place. A forced kill cannot run Python fault cleanup; the supervisor still
+stops an owned OpenOCD server. Bit-flips support `--mask`, `--random`, `--width`,
+`--count`, `--interval`, and `--seed`. Common options such as `--no-reset` and
+`--elf` may appear before or after the fault subcommand. Direct invocation with
+`.venv/bin/python fi_dbg/inject.py` also works.
+
+`FaultController(..., reuse_openocd=True, reset=False)` exposes the same reuse
+behavior to Python callers. `reset=True` requests reset during controller startup;
+fault-model setup and injection methods remain reset-free. Supplying no ELF is
+supported for raw addresses. Existing test and campaign defaults are unchanged.
+
+The original `fi_dbg/fi.py` remains available and requires an already running
+OpenOCD server:
 
 ```sh
 .venv/bin/python -m fi_dbg.fi stuck-at led_enabled 1 --elf build/fi_dbg.elf
 ```
 
-Direct invocation with `.venv/bin/python fi_dbg/fi.py` also works. ELF parsing
+Direct invocation with `.venv/bin/python fi_dbg/fi.py` also works.
+
+## Implementation layout
+
+ELF parsing
 lives in `fi_dbg/helpers/elf/elf_parser.py`; OpenOCD server and supervisor helpers
 live in `fi_dbg/helpers/openocd/`. Fault model implementations live in
 `fi_dbg/faults/`.

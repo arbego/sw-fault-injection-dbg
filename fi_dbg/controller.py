@@ -10,6 +10,8 @@ import secrets
 import time
 from types import MappingProxyType
 
+from openocd import ResetType
+
 from .helpers.elf.elf_parser import ElfParser
 from .faults import BitFlipFault, StuckAtFault
 from .helpers.target.esp import (
@@ -52,13 +54,14 @@ class FaultHandle:
 class FaultController:
     """Own the target, fault handles, observations, random seed, and OpenOCD.
 
-    Supplying project builds and flashes that ESP-IDF application. With only elf,
-    the session operates on the application already flashed to the target.
+    Supplying project builds and flashes that ESP-IDF application. Otherwise,
+    the session operates on the already flashed application. ELF is optional
+    for raw addresses. Reuse and reset are explicit target preparation options.
     """
 
-    def __init__(self, elf, *, project=None, host=None, port=None, seed=None,
-                 log_prefix="session"):
-        self.elf_path = Path(elf).expanduser().resolve()
+    def __init__(self, elf=None, *, project=None, host=None, port=None, seed=None,
+                 log_prefix="session", reuse_openocd=False, reset=False):
+        self.elf_path = Path(elf).expanduser().resolve() if elf is not None else None
         self.project = Path(project).expanduser().resolve() if project else None
         self.host = host or os.environ.get("FI_OPENOCD_HOST", "localhost")
         self.port = int(port if port is not None else os.environ.get("FI_OPENOCD_PORT", "6666"))
@@ -67,6 +70,8 @@ class FaultController:
         self.seed = secrets.randbits(64) if seed is None else seed
         self.random = random.Random(self.seed)
         self.log_prefix = log_prefix
+        self.reuse_openocd = reuse_openocd
+        self.reset_on_open = reset
         self.history = []
         self._client = None
         self._server = None
@@ -97,19 +102,21 @@ class FaultController:
             raise RuntimeError("Create a new FaultController for each session")
         if self.project and not (self.project / "CMakeLists.txt").is_file():
             raise ValueError(f"Not an ESP-IDF project: {self.project}")
-        if not self.project:
+        if not self.project and self.elf_path is not None:
             self._elf = ElfParser(str(self.elf_path))
         self._lock = claim_target_lock(self.host, self.port)
         atexit.register(self.close)
         try:
-            build_dir = self.project / "build" if self.project else self.elf_path.parent
-            self._server = start_openocd(self.host, self.port, build_dir)
+            build_dir = (self.project / "build" if self.project else
+                         self.elf_path.parent if self.elf_path else Path.cwd() / "build")
+            self._server = start_openocd(self.host, self.port, build_dir, reuse=self.reuse_openocd)
             if self.project:
                 build_app(self.project)
                 description = json.loads((build_dir / "project_description.json").read_text())
                 built_elf = (build_dir / description["app_elf"]).resolve()
-                if self.elf_path != built_elf:
+                if self.elf_path is not None and self.elf_path != built_elf:
                     raise ValueError(f"ELF must match the application being flashed: {built_elf}")
+                self.elf_path = built_elf
                 self._elf = ElfParser(str(self.elf_path))
                 flash_app(self.host, self.port, build_dir)
             client = OpenOCDClient(self.host, self.port, timeout=10)
@@ -119,9 +126,15 @@ class FaultController:
             if "esp32s3.cpu0" not in targets.split():
                 raise RuntimeError("OpenOCD does not expose esp32s3.cpu0")
             client.execute("targets esp32s3.cpu0")
+            if self.reset_on_open:
+                self.log("Resetting target before injection...", operation="reset")
+                client.reset(ResetType.RUN)
+                time.sleep(2)
+                client.execute("targets esp32s3.cpu0")
             resume_if_halted(client)
             self.log(f"Random seed: {self.seed}", operation="open", seed=self.seed,
-                     elf=str(self.elf_path), host=self.host, port=self.port)
+                     elf=str(self.elf_path) if self.elf_path else None,
+                     host=self.host, port=self.port)
             return self
         except BaseException:
             try:
@@ -180,6 +193,8 @@ class FaultController:
 
     def symbol(self, name):
         self._require_open()
+        if self._elf is None:
+            raise ValueError("Provide an ELF file to resolve symbol names")
         symbol = self._elf.find_symbol_by_name(name)
         if symbol is None:
             raise ValueError(f"Symbol {name!r} not found in {self.elf_path}")
@@ -203,15 +218,26 @@ class FaultController:
         if width not in (8, 16, 32) or not isinstance(count, int) or count < 1:
             raise ValueError("Use width 8, 16, or 32 and a positive integer count")
 
+    def _stuck_at_handler(self):
+        active = next((handle._model for handle in self._faults.values()
+                       if isinstance(handle._model, StuckAtFault) and handle.active), None)
+        if active is not None:
+            return active
+        # A borrowed server may already enforce a fault owned by another client.
+        if self.reuse_openocd and int(self._client.execute(
+            "if {[array exists ::fi_stuck_hits]} {array size ::fi_stuck_hits} else {expr 0}"
+        )):
+            return StuckAtFault(self._client)
+        return None
+
     @contextmanager
     def paused(self):
         """Take a consistent snapshot without releasing any pending stuck-at write."""
         self._require_open()
         if self._pause_depth == 0:
-            active = next((handle for handle in self._faults.values()
-                           if isinstance(handle._model, StuckAtFault) and handle.active), None)
+            active = self._stuck_at_handler()
             if active:
-                active._model._pause_handler()
+                active._pause_handler()
             else:
                 self._client.halt()
             if self._client.execute("esp32s3.cpu0 curstate") != "halted":
@@ -222,10 +248,9 @@ class FaultController:
         finally:
             self._pause_depth -= 1
             if self._pause_depth == 0:
-                active = next((handle for handle in self._faults.values()
-                               if isinstance(handle._model, StuckAtFault) and handle.active), None)
+                active = self._stuck_at_handler()
                 if active:
-                    self._client.execute(active._model.get_tcl_handler())
+                    self._client.execute(active.get_tcl_handler())
                 resume_if_halted(self._client)
 
     def read_memory(self, target, count=1, *, width=32, offset=0):

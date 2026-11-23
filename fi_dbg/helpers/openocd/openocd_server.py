@@ -110,8 +110,12 @@ class ManagedOpenOCD:
             self.log.close()
 
 
-def start_openocd(host, port, build_dir):
-    """Start a fresh local server. The caller owns stop(); remote servers are unmanaged."""
+def start_openocd(host, port, build_dir, *, reuse=False):
+    """Start a supervised server, optionally borrowing an existing one.
+
+    The caller owns stop() on returned servers. Borrowed and remote servers
+    return None and remain externally managed.
+    """
     try:
         version = server_version(host, port)
     except (OSError, RuntimeError) as error:
@@ -121,6 +125,12 @@ def start_openocd(host, port, build_dir):
             print(f"[hardware] Using remote OpenOCD at {host}:{port}", flush=True)
             return None
         raise RuntimeError(f"Remote OpenOCD is unavailable at {host}:{port}; start it on that host.")
+
+    if reuse and version:
+        print(f"[hardware] Reusing OpenOCD at {host}:{port}", flush=True)
+        return None
+    if reuse:
+        print(f"[hardware] No OpenOCD found at {host}:{port}; initializing a local server.", flush=True)
 
     executable, scripts = find_openocd()
     build_dir = Path(build_dir)
