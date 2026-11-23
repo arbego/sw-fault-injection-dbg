@@ -14,6 +14,9 @@ static led_strip_handle_t led_strip;
 // 0 = LED off, non-zero = LED on
 // This variable can be targeted for fault injection
 volatile uint32_t led_enabled = 1;
+volatile uint32_t led_enabled2 = 0;
+// Full on/off cycles per second; 0 pauses blinking at the current LED state.
+volatile uint32_t led_blink_frequency_hz = 5;
 
 static void configure_led(void)
 {
@@ -36,9 +39,16 @@ static void led_task(void *arg)
     uint32_t counter = 0;
     
     while (1) {
+        uint32_t frequency_hz = led_blink_frequency_hz;
+        if (frequency_hz == 0) {
+            vTaskDelay(1);
+            continue;
+        }
+
         // Toggle led_enabled every iteration
         led_enabled = !led_enabled;
-        
+        led_enabled2;
+
         ESP_LOGI(TAG, "[%lu] led_enabled = %lu", counter++, led_enabled);
         
         // LED state controlled by variable
@@ -49,7 +59,9 @@ static void led_task(void *arg)
         }
         led_strip_refresh(led_strip);
         
-        vTaskDelay(pdMS_TO_TICKS(100));  // 100 ms delay
+        // Two toggles make one blink cycle. Always yield for at least one tick.
+        TickType_t half_period_ticks = (configTICK_RATE_HZ / 2U) / frequency_hz;
+        vTaskDelay(half_period_ticks > 0 ? half_period_ticks : 1);
     }
 }
 
