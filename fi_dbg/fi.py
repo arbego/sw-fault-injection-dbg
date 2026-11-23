@@ -3,7 +3,7 @@
 Fault Injector CLI.
 
 A modular fault injection tool supporting multiple fault models.
-Each model is implemented as a plugin in the faults/ directory.
+Each model is implemented as a plugin in the fi_dbg/faults/ directory.
 
 Usage:
     fi.py stuck-at <address> <value> [options]
@@ -13,11 +13,16 @@ Usage:
 import sys
 import time
 import argparse
+from pathlib import Path
 from typing import Optional
+
+# Allow direct execution from outside the repository root.
+if __package__ in (None, ""):
+    sys.path[0] = str(Path(__file__).resolve().parents[1])
 
 from openocd import Client
 
-from faults import get_fault_models, StuckAtFault, BitFlipFault
+from fi_dbg.faults import get_fault_models, StuckAtFault, BitFlipFault
 
 
 class FaultInjector:
@@ -112,7 +117,7 @@ def resolve_address(address_str: str, elf_path: Optional[str] = None) -> int:
         return int(address_str, 16)
     except ValueError:
         if elf_path:
-            from elf_parser import ElfParser
+            from fi_dbg.helpers.elf.elf_parser import ElfParser
             elf = ElfParser(elf_path)
             sym = elf.find_symbol_by_name(address_str)
             if sym:

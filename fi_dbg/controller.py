@@ -10,10 +10,12 @@ import secrets
 import time
 from types import MappingProxyType
 
-from tools.elf_parser import ElfParser
-from tools.faults import BitFlipFault, StuckAtFault
-from .hardware import OpenOCDClient, build_app, claim_target_lock, flash_app, resume_if_halted
-from .openocd_server import start_openocd
+from .helpers.elf.elf_parser import ElfParser
+from .faults import BitFlipFault, StuckAtFault
+from .helpers.target.esp import (
+    OpenOCDClient, build_app, claim_target_lock, flash_app, resume_if_halted,
+)
+from .helpers.openocd.openocd_server import start_openocd
 
 
 class FaultHandle:
@@ -47,7 +49,7 @@ class FaultHandle:
         self.remove()
 
 
-class FaultSession:
+class FaultController:
     """Own the target, fault handles, observations, random seed, and OpenOCD.
 
     Supplying project builds and flashes that ESP-IDF application. With only elf,
@@ -92,7 +94,7 @@ class FaultSession:
 
     def open(self):
         if self._client is not None or self._closed:
-            raise RuntimeError("Create a new FaultSession for each session")
+            raise RuntimeError("Create a new FaultController for each session")
         if self.project and not (self.project / "CMakeLists.txt").is_file():
             raise ValueError(f"Not an ESP-IDF project: {self.project}")
         if not self.project:
@@ -174,7 +176,7 @@ class FaultSession:
 
     def _require_open(self):
         if self._client is None:
-            raise RuntimeError("Open FaultSession with a with statement or open() first")
+            raise RuntimeError("Open FaultController with a with statement or open() first")
 
     def symbol(self, name):
         self._require_open()

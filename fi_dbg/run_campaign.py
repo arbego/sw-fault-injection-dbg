@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a Python procedure through the same fault API as the hardware tests."""
+"""Run a Python campaign through the same fault API as the hardware tests."""
 
 import argparse
 from contextlib import nullcontext
@@ -9,9 +9,10 @@ from pathlib import Path
 import runpy
 import sys
 
-# Also support invoking this script directly from outside the repository root.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from fi_dbg import FaultSession
+# Allow direct execution from outside the repository root.
+if __package__ in (None, ""):
+    sys.path[0] = str(Path(__file__).resolve().parents[1])
+from fi_dbg import FaultController
 
 
 def main():
@@ -27,9 +28,9 @@ def main():
     args = parser.parse_args()
     script = args.script.expanduser().resolve()
     if not script.is_file():
-        parser.error(f"Experiment script does not exist: {script}")
+        parser.error(f"Campaign script does not exist: {script}")
 
-    session = FaultSession(args.elf, project=args.project, host=args.host,
+    session = FaultController(args.elf, project=args.project, host=args.host,
                            port=args.port, seed=args.seed)
     # Open the report before touching hardware, so an invalid path fails early.
     report_context = args.log.open("w") if args.log else nullcontext(None)
@@ -60,7 +61,7 @@ def main():
                 except Exception as error:
                     if failure is None:
                         raise
-                    print(f"Could not write experiment log: {error}", file=sys.stderr)
+                    print(f"Could not write campaign log: {error}", file=sys.stderr)
 
 
 if __name__ == "__main__":

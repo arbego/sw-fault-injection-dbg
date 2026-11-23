@@ -4,7 +4,7 @@ from functools import lru_cache
 import os
 from pathlib import Path
 
-from fi_dbg import FaultSession
+from fi_dbg import FaultController
 
 
 APP_DIR = Path(__file__).resolve().parents[1] / "app"
@@ -13,7 +13,7 @@ APP_DIR = Path(__file__).resolve().parents[1] / "app"
 @lru_cache(maxsize=1)
 def prepare_session():
     seed = os.environ.get("FI_SEED")
-    session = FaultSession(
+    session = FaultController(
         elf=APP_DIR / "build/fi_test_app.elf", project=APP_DIR,
         seed=int(seed, 0) if seed is not None else None, log_prefix="test",
     )

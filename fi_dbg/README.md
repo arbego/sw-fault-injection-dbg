@@ -1,6 +1,6 @@
-# Python fault experiments
+# Python fault campaigns
 
-Experiments are ordinary Python files defining `run(session)`. Functions are
+Campaigns are ordinary Python files defining `run(session)`. Functions are
 procedures; Python provides loops, conditions, imports, and assertions. The
 `fi_dbg` API owns symbols, memory access, fault handles, and session cleanup.
 The hardware tests use this same API and the existing fault model implementations.
@@ -9,13 +9,13 @@ From the `fi-dbg` directory, using the environment described in
 [the hardware test instructions](../tests/README.md):
 
 ```sh
-.venv/bin/python tools/run_experiment.py experiments/counters.py \
+.venv/bin/python -m fi_dbg.run_campaign fi_dbg/campaigns/counters.py \
   --project tests/app --elf tests/app/build/fi_test_app.elf \
-  --seed 42 --log /tmp/fi-experiment.json
+  --seed 42 --log /tmp/fi-campaign.json
 ```
 
 This builds with the host ESP-IDF framework and flashes the test application
-before running [the example](../experiments/counters.py). Omitting `--project`
+before running [the example](campaigns/counters.py). Omitting `--project`
 uses the already flashed application; `--elf` must match it. When building a
 project, the supplied ELF must match that project's generated ELF. Build output
 uses the project's default `build` directory. Set `IDF_COMPONENT_MANAGER=1` for
@@ -24,7 +24,7 @@ projects needing managed dependencies; it defaults to disabled.
 Scripts can also use the API directly from the repository root:
 
 ```python
-from fi_dbg import FaultSession
+from fi_dbg import FaultController
 
 def hold_and_release(session, value):
     counter = "fi_stuck_at_counter"
@@ -34,7 +34,7 @@ def hold_and_release(session, value):
         assert fault.stats["triggers"] > 0
     session.expect_increasing(counter, min_delta=2)
 
-with FaultSession(elf="tests/app/build/fi_test_app.elf", seed=42) as session:
+with FaultController(elf="tests/app/build/fi_test_app.elf", seed=42) as session:
     hold_and_release(session, session.random.randint(2, 0x7FFFFFFF))
 ```
 
@@ -75,8 +75,20 @@ Each session starts a fresh local OpenOCD server and holds an exclusive endpoint
 lock. Closing the session removes its faults and stops the server. The existing
 supervisor stops OpenOCD even if the Python process is killed. Remote servers are
 externally managed. The server settings and discovery variables are documented
-in [the test instructions](../tests/README.md). The existing `tools/fi.py` CLI
-continues to work independently.
+in [the test instructions](../tests/README.md). The `fi_dbg/fi.py` CLI works
+independently and requires an OpenOCD server already running:
+
+```sh
+.venv/bin/python -m fi_dbg.fi stuck-at led_enabled 1 --elf build/fi_dbg.elf
+```
+
+Direct invocation with `.venv/bin/python fi_dbg/fi.py` also works. ELF parsing
+lives in `fi_dbg/helpers/elf/elf_parser.py`; OpenOCD server and supervisor helpers
+live in `fi_dbg/helpers/openocd/`. Fault model implementations live in
+`fi_dbg/faults/`.
+
+ESP-IDF discovery, host builds, JTAG flashing, target locks, and the OpenOCD
+client wrapper live in `fi_dbg/helpers/target/esp.py`.
 
 Every session prints its random seed. Use `session.random` for repeatable random
 choices and `--seed` (or `FI_SEED`) to replay a runner's choices. Hardware timing

@@ -1,4 +1,4 @@
-"""Small procedures for the firmware in tests/app; run with run_experiment.py."""
+"""Campaign for tests/app firmware; run with python -m fi_dbg.run_campaign."""
 
 
 def wait_for_firmware(session):

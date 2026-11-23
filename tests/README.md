@@ -7,7 +7,7 @@ ESP-IDF project; it does not use the LED application or require an LED component
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r tools/requirements.txt
+.venv/bin/python -m pip install -r requirements.txt
 .venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
@@ -177,13 +177,13 @@ For another fault type, add a target module under `app/main/modules/`, register
 its source in `app/main/CMakeLists.txt`, call it from the test task, and add a
 corresponding Python test module under `hardware/`. Hardware modules
 should call `tests.hardware.support.prepare_session()` in their setup to reuse
-the common build/flash fixture and matching ELF. Use the returned `FaultSession`
+the common build/flash fixture and matching ELF. Use the returned `FaultController`
 for memory access, faults, and observations, and register
 `session.remove_all_faults` as test cleanup.
 
 ## Shared Python API
 
-Tests and experiment scripts both use [`fi_dbg.FaultSession`](../fi_dbg/README.md).
+Tests and experiment scripts both use [`fi_dbg.FaultController`](../fi_dbg/README.md).
 The test fixture adds only the test application's startup handshake and caches
 one session per test process. Hardware lifecycle and building/flashing live in
 the reusable package. Test output keeps the `[test: stuck-at]` prefix.
@@ -194,5 +194,5 @@ To replay random test choices, set a seed (also printed at session startup):
 FI_SEED=42 .venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
-The procedure example and runner use the same API; see
-[`experiments/counters.py`](../experiments/counters.py).
+The campaign example and runner use the same API; see
+[`fi_dbg/campaigns/counters.py`](../fi_dbg/campaigns/counters.py).
