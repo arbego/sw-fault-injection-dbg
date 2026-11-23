@@ -69,16 +69,16 @@ First build and flash the LED application. This step is required after the tests
 which leave their dedicated test firmware on the board:
 
 ```sh
-IDF_COMPONENT_MANAGER=1 .venv/bin/python - <<'PY'
-from fi_dbg import FaultController
-
-with FaultController(project=".", elf="build/fi_dbg.elf"):
-    pass
-PY
+IDF_COMPONENT_MANAGER=1 idf.py -DIDF_TARGET=esp32s3 flash
 ```
 
-This uses JTAG for flashing and enables downloading the LED strip dependency
-needed on a fresh checkout. The LED should now blink at approximately 5 Hz.
+Run this command from the checkout directory after activating ESP-IDF as shown
+above. `flash` builds the application automatically, downloads the LED strip
+dependency if needed, and flashes via esptool over the serial interface of the
+native USB Serial/JTAG port. ESP-IDF detects the port automatically; add
+`-p PORT` before `flash` to select it explicitly (for example,
+`-p /dev/cu.usbmodem1201` on macOS or `-p /dev/ttyACM0` on Linux).
+The target resets after flashing, and the LED should blink at approximately 5 Hz.
 
 **Bit-flip: slow blinking from 5 Hz to 1 Hz.**
 
