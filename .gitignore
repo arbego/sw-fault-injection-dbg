@@ -10,6 +10,7 @@ venv/
 
 # ESP-IDF
 /.esp/
+sdkconfig
 sdkconfig.old
 dependencies.lock
 managed_components/
