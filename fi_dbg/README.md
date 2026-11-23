@@ -118,15 +118,6 @@ behavior to Python callers. `reset=True` requests reset during controller startu
 fault-model setup and injection methods remain reset-free. Supplying no ELF is
 supported for raw addresses. Existing test and campaign defaults are unchanged.
 
-The original `fi_dbg/fi.py` remains available and requires an already running
-OpenOCD server:
-
-```sh
-.venv/bin/python -m fi_dbg.fi stuck-at led_enabled 1 --elf build/fi_dbg.elf
-```
-
-Direct invocation with `.venv/bin/python fi_dbg/fi.py` also works.
-
 ## Implementation layout
 
 ELF parsing

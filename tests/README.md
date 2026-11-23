@@ -143,7 +143,7 @@ The values `0`, `1`, and the random value are tested in one continuous target
 run. Only the initial build/flash preparation resets the board. Fault setup and
 the controller's fault methods cannot reset the target. The new `inject.py` CLI
 can request a reset as a separate controller preparation step; `--no-reset`
-skips it. The original `fi.py` remains unchanged.
+skips it.
 
 ## Two simultaneous stuck-at faults
 
