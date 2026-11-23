@@ -99,10 +99,5 @@ The LED stays on despite the firmware trying to toggle it. After five seconds,
 the fault is removed and normal blinking resumes. Use value `0` to hold it off,
 or omit `--duration` and press Ctrl+C to remove the fault manually.
 
-Both commands start a fresh OpenOCD session and reset the target first, making
-the examples repeatable. They never build or flash firmware. Add `--no-reset`
-to preserve the current execution and reuse a running server; if none exists,
-one is started with a note. Always use the ELF matching the flashed application.
-
 See [test details](tests/README.md) and the [Python API and campaigns](fi_dbg/README.md)
 for more options.

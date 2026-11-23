@@ -86,22 +86,22 @@ Inject into the firmware already flashed on the target:
 .venv/bin/python -m fi_dbg.inject bit-flip led_enabled --bit 0 --elf build/fi_dbg.elf
 ```
 
-The default starts a fresh local OpenOCD session (restarting an existing local
-server), resets the target, waits two seconds for boot, and applies the fault.
+By default, injection preserves the current target execution and reuses a
+responding OpenOCD server. If none exists locally, the injector prints a note
+and starts one without requesting a target reset.
 `inject.py` never builds or flashes firmware and has no `--project` option.
 `--elf` supplies symbol addresses only; it must match the flashed firmware.
 Raw hex addresses work without an ELF.
 
-Use `--no-reset` to inject into the current execution:
+Use `--reset` to start a fresh local OpenOCD session (restarting an existing local
+server), reset the target, and wait two seconds for boot before injection:
 
 ```sh
-.venv/bin/python -m fi_dbg.inject stuck-at led_enabled 1 --elf build/fi_dbg.elf --no-reset
+.venv/bin/python -m fi_dbg.inject stuck-at led_enabled 1 --elf build/fi_dbg.elf --reset
 ```
 
-This reuses a responding OpenOCD server. If none exists locally, the injector
-prints a note and starts one without requesting a target reset. A reused server
-stays running after exit; a server started by this command is supervised and
-stopped when the command ends, including if the process is killed. Remote
+A reused server stays running after exit; a server started by this command is
+supervised and stopped when the command ends, including if the process is killed. Remote
 servers must already be running and remain externally managed.
 
 Stuck-at remains active until Ctrl+C or until `--duration SECONDS` expires.
@@ -109,7 +109,7 @@ On normal exit, Ctrl+C, SIGTERM, or SIGHUP the injector removes its own faults,
 resumes the target, and disconnects. Cleanup leaves faults owned by other clients
 in place. A forced kill cannot run Python fault cleanup; the supervisor still
 stops an owned OpenOCD server. Bit-flips support `--mask`, `--random`, `--width`,
-`--count`, `--interval`, and `--seed`. Common options such as `--no-reset` and
+`--count`, `--interval`, and `--seed`. Common options such as `--reset` and
 `--elf` may appear before or after the fault subcommand. Direct invocation with
 `.venv/bin/python fi_dbg/inject.py` also works.
 

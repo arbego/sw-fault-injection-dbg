@@ -87,9 +87,9 @@ def make_parser():
         command.add_argument('--host', default=default, help='OpenOCD host; default: FI_OPENOCD_HOST or localhost')
         command.add_argument('--port', type=positive_integer, default=default, help='Tcl port; default: FI_OPENOCD_PORT or 6666')
         command.add_argument('--seed', type=integer, default=default, help='Seed for random bit selection')
-        command.add_argument('--no-reset', action='store_true',
+        command.add_argument('--reset', action='store_true',
                              default=False if command is parser else argparse.SUPPRESS,
-                             help='Reuse OpenOCD and skip resetting the target; start a server if absent')
+                             help='Start a fresh local OpenOCD session and reset the target before injection; default: reuse without reset')
     for command in (stuck, flip):
         command.add_argument('--width', type=int, choices=(8, 16, 32), default=32, help='Memory access width; default: 32')
     return parser
@@ -142,7 +142,7 @@ def main(argv=None):
         # No project is supplied: this entry point never builds or flashes.
         controller = FaultController(args.elf, host=args.host, port=args.port,
                                      seed=args.seed, log_prefix='inject',
-                                     reuse_openocd=args.no_reset, reset=not args.no_reset)
+                                     reuse_openocd=not args.reset, reset=args.reset)
         with stopping_signals(), controller:
             if args.model == 'bit-flip':
                 result = controller.bit_flip(address, bit=args.bit, mask=args.mask,
